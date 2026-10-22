@@ -2,14 +2,15 @@ name: checkin
 
 on:
   schedule:
-    # 每30分钟一次（避开整点高峰，降低被 GitHub 延迟/丢弃的概率）
-    - cron: "13,43 0-15,21-23 * * *"
+    # 覆盖 UTC+8 05:00-14:00（含13:30后缓冲），每30分钟一次，避开整点高峰
+    - cron: "13,43 21-23,0-6 * * *"
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # 最长等待：05:00 签到成功 -> 09:00 推送 = 4 小时，加构建缓冲
+    timeout-minutes: 280
     steps:
       - uses: actions/checkout@v4
 

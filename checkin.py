@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import time
 import random
 import hashlib
 import urllib.parse
@@ -18,8 +19,9 @@ COOKIE = (os.environ.get("TARGET_COOKIE") or "").strip()
 CHECKIN_PATH = "/user/checkin"
 TZ = timezone(timedelta(hours=8))
 FORCE = (os.environ.get("FORCE") or "").strip().lower() in ("1", "true", "yes")
-WINDOW_START = 5 * 60
-WINDOW_END = 24 * 60
+WINDOW_START = 5 * 60          # 每日随机签到窗口起点 05:00（分钟数）
+WINDOW_END = 13 * 60 + 30      # 每日随机签到窗口终点 13:30（不含）
+NOTIFY_NOT_BEFORE = 9 * 60     # 09:00 前签到成功的通知延迟到 09:00 推送
 
 ALREADY = ("已签到", "已经签到", "已簽到", "已經簽到", "重复", "重複")
 
@@ -72,7 +74,7 @@ def daily_target_minute(day):
 
 
 def passed_gate():
-    """到达即签：当前时间不早于今日随机目标时刻即可执行。
+    """到达即签：当前时间不早于今日随机目标时刻（05:00–13:30 之间）即可执行。
 
     原逻辑要求运行小时精确等于目标小时，但 GitHub Actions 的 schedule
     在高峰期会丢任务/延迟，两者对不上时签到会被静默跳过。
@@ -132,9 +134,24 @@ def notify(title, text):
         log("已发送通知: " + ",".join(sent))
 
 
+def notify_delay_seconds():
+    """09:00 前产生的成功通知延迟到 09:00 推送，返回需等待的秒数（0=立即）"""
+    n = now()
+    today_9 = n.replace(hour=9, minute=0, second=0, microsecond=0)
+    if n < today_9:
+        return (today_9 - n).total_seconds()
+    return 0
+
+
 def finish(ok, summary, detail="", title=None, quiet=False):
     log(summary)
     if not quiet:
+        if ok:
+            # 09:00 前签到成功：睡到 09:00 再推送，避免清早打扰
+            delay = notify_delay_seconds()
+            if delay > 0:
+                log(f"通知延迟至 09:00 推送（等待 {int(delay) // 60} 分 {int(delay) % 60} 秒）")
+                time.sleep(delay)
         body = now().strftime("%Y-%m-%d %H:%M") + " " + summary
         if detail:
             body += "\n" + detail
