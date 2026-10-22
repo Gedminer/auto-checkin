@@ -2,7 +2,8 @@ name: checkin
 
 on:
   schedule:
-    - cron: "0 0-15,21-23 * * *"
+    # 每30分钟一次（避开整点高峰，降低被 GitHub 延迟/丢弃的概率）
+    - cron: "13,43 0-15,21-23 * * *"
   workflow_dispatch:
 
 jobs:

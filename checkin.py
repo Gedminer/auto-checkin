@@ -1,7 +1,6 @@
 import os
 import sys
 import re
-import time
 import random
 import hashlib
 import urllib.parse
@@ -73,16 +72,17 @@ def daily_target_minute(day):
 
 
 def passed_gate():
+    """到达即签：当前时间不早于今日随机目标时刻即可执行。
+
+    原逻辑要求运行小时精确等于目标小时，但 GitHub Actions 的 schedule
+    在高峰期会丢任务/延迟，两者对不上时签到会被静默跳过。
+    """
     n = now()
     target = daily_target_minute(n.date())
-    target_hour, target_minute = divmod(target, 60)
-    if n.hour != target_hour:
-        log("不在今日签到时段，跳过")
+    now_sec = n.hour * 3600 + n.minute * 60 + n.second
+    if now_sec < target * 60:
+        log(f"未到今日签到时刻 {target // 60:02d}:{target % 60:02d}，跳过")
         return False
-    wait = (target_minute - n.minute) * 60 - n.second
-    if wait > 0:
-        log(f"随机等待 {wait} 秒后签到")
-        time.sleep(wait)
     return True
 
 
@@ -132,12 +132,13 @@ def notify(title, text):
         log("已发送通知: " + ",".join(sent))
 
 
-def finish(ok, summary, detail="", title=None):
+def finish(ok, summary, detail="", title=None, quiet=False):
     log(summary)
-    body = now().strftime("%Y-%m-%d %H:%M") + " " + summary
-    if detail:
-        body += "\n" + detail
-    notify(title or ("签到成功" if ok else "签到失败"), body)
+    if not quiet:
+        body = now().strftime("%Y-%m-%d %H:%M") + " " + summary
+        if detail:
+            body += "\n" + detail
+        notify(title or ("签到成功" if ok else "签到失败"), body)
     return 0 if ok else 1
 
 
@@ -186,10 +187,11 @@ def main():
 
     if ret == 1:
         if already:
-            return finish(True, "今日已签到", msg, title="今日已签到")
+            return finish(True, "今日已签到", msg, title="今日已签到", quiet=True)
         return finish(True, "签到成功", msg, title="签到成功")
     if already:
-        return finish(True, "今日已签到", msg, title="今日已签到")
+        # 到达即签后同一天会多次运行，重复的"已签到"只记日志、不发通知
+        return finish(True, "今日已签到", msg, title="今日已签到", quiet=True)
     return finish(False, "签到失败", msg)
 
 
